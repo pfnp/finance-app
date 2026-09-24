@@ -133,6 +133,14 @@
         .summary-pill .dot.in { background:#5be08a; }
         .summary-pill .dot.out { background:#ff8585; }
 
+        /* Monthly stats (replaces total balance) */
+        .month-stats { display:flex; gap:10px; position:relative; margin:14px 0 14px; }
+        .month-stat { flex:1; min-width:0; background:rgba(255,255,255,0.10); border:1px solid rgba(255,255,255,0.16); border-radius:16px; padding:12px 14px; backdrop-filter:blur(6px); }
+        .month-stat .ms-label { font-size:11px; font-weight:700; letter-spacing:1px; text-transform:uppercase; opacity:0.72; margin-bottom:6px; }
+        .month-stat .ms-value { font-size:18px; font-weight:800; letter-spacing:-0.5px; line-height:1.15; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .month-stat .ms-value.in { color:#6ff09c; }
+        .month-stat .ms-value.out { color:#ff9b9b; }
+
         .section-label { font-size:13px; font-weight:700; color:var(--text-3); text-transform:uppercase; letter-spacing:0.8px; padding:6px 4px 2px; }
 
         /* Wallet card */
@@ -167,6 +175,15 @@
         .segmented button.on { background:var(--surface); color:var(--text); box-shadow:var(--shadow-sm); }
         .segmented button.on-income { background:var(--success); color:#fff; }
         .segmented button.on-expense { background:var(--danger); color:#fff; }
+
+        /* ---------- Checkbox row (payment no-analytics) ---------- */
+        .checkbox-row { display:flex; align-items:center; gap:12px; padding:12px 14px; border-radius:14px; background:var(--surface-2); border:1.5px solid var(--border); cursor:pointer; transition:all var(--t); -webkit-user-select:none; user-select:none; }
+        .checkbox-row:active { transform:scale(0.985); }
+        .checkbox-row.checked { background:var(--accent-soft); border-color:var(--accent); }
+        .checkbox-box { width:22px; height:22px; border-radius:7px; border:2px solid var(--border-strong); background:var(--surface); display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:all var(--t); font-size:13px; line-height:1; color:transparent; font-weight:800; }
+        .checkbox-row.checked .checkbox-box { background:var(--accent); border-color:var(--accent); color:#fff; }
+        .checkbox-label { font-size:14px; font-weight:600; line-height:1.3; }
+        .checkbox-hint { font-size:11.5px; color:var(--text-3); font-weight:500; margin-top:2px; line-height:1.35; }
 
         /* chips */
         .chip-row { display:flex; flex-wrap:wrap; gap:8px; }
@@ -218,6 +235,7 @@
         .payment-status.tomorrow { background:var(--warning-soft); color:var(--warning); }
         .payment-status.upcoming { background:var(--accent-soft); color:var(--accent); }
         .payment-status.overdue { background:var(--danger-soft); color:var(--danger); }
+        .pay-nobadge { font-size:9.5px; font-weight:800; padding:2px 7px; border-radius:8px; background:var(--warning-soft); color:var(--warning); letter-spacing:0.4px; text-transform:uppercase; }
 
         /* ---------- Empty ---------- */
         .empty-state { text-align:center; padding:48px 20px; color:var(--text-3); }
@@ -357,7 +375,7 @@
             payments: 'finance_payments',
             theme: 'finance_theme',
             notifySettings: 'finance_notify_settings',
-            notifySent: 'finance_notify_sent' // для хранения отправленных уведомлений
+            notifySent: 'finance_notify_sent'
         };
         const DEFAULT_CATEGORIES = {
             income: ['Зарплата','Фриланс','Подарки','Другое'],
@@ -378,6 +396,7 @@
             { id:'year',    label:'Год' },
             { id:'custom',  label:'Свой период' },
         ];
+        const MONTH_NAMES = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 
         /* ---------- Helpers ---------- */
         const $ = (s,c=document)=>c.querySelector(s);
@@ -386,7 +405,34 @@
         function fmtShort(n){ const a=Math.abs(n); if(a>=1e6) return (n/1e6).toFixed(a>=1e7?0:1).replace('.0','')+'M'; if(a>=1e3) return (n/1e3).toFixed(a>=1e4?0:1).replace('.0','')+'K'; return String(Math.round(n)); }
         function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
         function todayStr(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
-        function formatDate(iso){ const d=new Date(iso); const now=new Date(); const today=new Date(now.getFullYear(),now.getMonth(),now.getDate()); const target=new Date(d.getFullYear(),d.getMonth(),d.getDate()); const diff=(today-target)/864e5; if(diff===0) return 'Сегодня'; if(diff===1) return 'Вчера'; return d.toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric'}); }
+        function pad2(n){ return String(n).padStart(2,'0'); }
+        // Правильный парсинг YYYY-MM-DD в локальную дату (без UTC-сдвига)
+        function parseLocalDate(str){
+            if(!str) return new Date();
+            if(/^\d{4}-\d{2}-\d{2}$/.test(str)){
+                const [y,m,d] = str.split('-').map(Number);
+                return new Date(y, m-1, d);
+            }
+            return new Date(str);
+        }
+        function localDateStr(d){ return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate()); }
+        function formatDate(iso){
+            if(!iso) return '';
+            let d;
+            if(/^\d{4}-\d{2}-\d{2}$/.test(iso)){
+                const [y,m,day] = iso.split('-').map(Number);
+                d = new Date(y, m-1, day);
+            } else {
+                d = new Date(iso);
+            }
+            const now = new Date();
+            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            const target = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+            const diff = (today - target) / 864e5;
+            if(diff === 0) return 'Сегодня';
+            if(diff === 1) return 'Вчера';
+            return d.toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric'});
+        }
         function formatTime(iso){ return new Date(iso).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'}); }
         function escHtml(s){ const d=document.createElement('div'); d.textContent=s==null?'':String(s); return d.innerHTML; }
         function cssVar(name){ return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
@@ -415,7 +461,14 @@
         function getWalletOps(id){ return state.operations.filter(o=>o.walletId===id).sort((a,b)=>new Date(b.date)-new Date(a.date)); }
         function getWalletBalance(id){ return state.operations.filter(o=>o.walletId===id).reduce((s,o)=>s+(o.type==='income'?o.amount:-o.amount),0); }
         function getTotalBalance(){ return state.wallets.reduce((s,w)=>s+getWalletBalance(w.id),0); }
-        function getMonthlySum(type){ const now=new Date(); const monthStart=new Date(now.getFullYear(),now.getMonth(),1).toISOString(); return state.operations.filter(o=>o.type===type&&o.date>=monthStart).reduce((s,o)=>s+o.amount,0); }
+        // Доходы/расходы за текущий календарный месяц (без учёта корректировок и начальных балансов)
+        function getMonthlySum(type){
+            const now = new Date();
+            const start = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+            return state.operations
+                .filter(o => o.type === type && !o.exclAnalytics && new Date(o.date).getTime() >= start)
+                .reduce((s, o) => s + o.amount, 0);
+        }
         function walletName(id){ const w=state.wallets.find(w=>w.id===id); return w?w.name:'—'; }
 
         /* ---------- Sound fx ---------- */
@@ -461,11 +514,7 @@
                 const resp = await fetch(url, {
                     method: 'POST',
                     body: message,
-                    headers: {
-                        'Title': title,
-                        'Priority': priority,
-                        'Tags': 'moneybag,calendar'
-                    }
+                    headers: { 'Title': title, 'Priority': priority, 'Tags': 'moneybag,calendar' }
                 });
                 if (resp.ok) console.log(`[ntfy] Уведомление отправлено: ${title}`);
                 else console.warn('[ntfy] Ошибка отправки', resp.status);
@@ -479,18 +528,17 @@
             else alert('❌ Не удалось отправить уведомление. Проверьте настройки topic и интернет.');
         }
 
-        // Проверка предстоящих платежей и отправка уведомлений
         function checkAndSendPaymentNotifications() {
             const { enabled, daysBefore, topic } = state.notifySettings;
             if (!enabled || !topic) return;
-            const sentMap = load(STORAGE_KEYS.notifySent, {}); // { "paymentId_daysBefore": "dateSent" }
+            const sentMap = load(STORAGE_KEYS.notifySent, {});
             const today = todayStr();
             let anySent = false;
             state.payments.forEach(payment => {
-                const paymentDate = payment.date; // YYYY-MM-DD
-                const notifyDate = new Date(paymentDate);
+                const pDate = parseLocalDate(payment.date);
+                const notifyDate = new Date(pDate);
                 notifyDate.setDate(notifyDate.getDate() - daysBefore);
-                const notifyDateStr = notifyDate.toISOString().slice(0,10);
+                const notifyDateStr = localDateStr(notifyDate);
                 if (notifyDateStr === today) {
                     const key = `${payment.id}_${daysBefore}`;
                     if (!sentMap[key]) {
@@ -508,12 +556,8 @@
             if (anySent) save(STORAGE_KEYS.notifySent, sentMap);
         }
 
-        // Вызывать после изменения платежей или при открытии страницы
-        function scheduleNotificationCheck() {
-            checkAndSendPaymentNotifications();
-        }
+        function scheduleNotificationCheck() { checkAndSendPaymentNotifications(); }
 
-        // Настройки уведомлений (модалка)
         function openNotifySettingsModal() {
             const settings = state.notifySettings;
             let html = `<div class="modal-handle"></div>
@@ -536,7 +580,6 @@
             <button class="modal-btn primary" id="save-notif-settings">Сохранить</button>
             <button class="modal-btn secondary" id="close-notif-settings">Отмена</button>`;
             openModal(html);
-            // обработчики внутри модалки
             $('#notif-on').addEventListener('click',()=>{ settings.enabled=true; refreshNotifyModalButtons(); });
             $('#notif-off').addEventListener('click',()=>{ settings.enabled=false; refreshNotifyModalButtons(); });
             $('#days-0').addEventListener('click',()=>{ settings.daysBefore=0; refreshNotifyModalButtons(); });
@@ -547,8 +590,8 @@
                 settings.topic = $('#topic-input').value.trim() || 'finance_app';
                 save(STORAGE_KEYS.notifySettings, settings);
                 closeModal();
-                scheduleNotificationCheck(); // повторная проверка после изменения
-                renderPaymentsPage(); // обновить страницу (кнопка может измениться)
+                scheduleNotificationCheck();
+                renderPaymentsPage();
             });
             $('#close-notif-settings').addEventListener('click',closeModal);
             function refreshNotifyModalButtons() {
@@ -562,7 +605,7 @@
             }
         }
 
-        /* ---------- Components (остальное без изменений) ---------- */
+        /* ---------- Components ---------- */
         function WalletCard(w,i){
             const bal=getWalletBalance(w.id);
             const wt=WALLET_TYPES[w.walletType]||WALLET_TYPES.cash;
@@ -590,16 +633,33 @@
 
         /* ---------- Home ---------- */
         function sortWallets(ws){ return ws.slice().sort((a,b)=>{ const ta=TYPE_ORDER[a.walletType]??9, tb=TYPE_ORDER[b.walletType]??9; if(ta!==tb)return ta-tb; return getWalletBalance(b.id)-getWalletBalance(a.id); }); }
+
         function renderHomePage(){
             const content=$('#content-home'); if(!content)return;
-            const total=getTotalBalance(), inc=getMonthlySum('income'), exp=getMonthlySum('expense');
+            const inc = getMonthlySum('income');
+            const exp = getMonthlySum('expense');
+            const monthDiff = inc - exp;
+            const monthName = MONTH_NAMES[new Date().getMonth()];
+            const incStr = inc > 0 ? '+ ' + fmt(inc) : fmt(inc);
+            const expStr = exp > 0 ? '− ' + fmt(exp) : fmt(exp);
+            const diffStr = monthDiff > 0 ? '+ ' + fmt(monthDiff) : fmt(monthDiff);
+            const diffDotColor = monthDiff >= 0 ? '#5be08a' : '#ff8585';
+
             let html=`<div class="stack">
                 <div class="card summary-card animate-in">
-                    <div class="summary-label">Общий баланс</div>
-                    <div class="summary-balance">${fmt(total)}</div>
+                    <div class="summary-label">${monthName} · текущий месяц</div>
+                    <div class="month-stats">
+                        <div class="month-stat">
+                            <div class="ms-label">Доходы</div>
+                            <div class="ms-value in">${incStr}</div>
+                        </div>
+                        <div class="month-stat">
+                            <div class="ms-label">Расходы</div>
+                            <div class="ms-value out">${expStr}</div>
+                        </div>
+                    </div>
                     <div class="summary-pills">
-                        <span class="summary-pill"><span class="dot in"></span>Доход ${fmt(inc)}</span>
-                        <span class="summary-pill"><span class="dot out"></span>Расход ${fmt(exp)}</span>
+                        <span class="summary-pill"><span class="dot" style="background:${diffDotColor}"></span>Итого за месяц: ${diffStr}</span>
                     </div>
                 </div>`;
             const sorted=sortWallets(state.wallets);
@@ -768,11 +828,12 @@
             c.addEventListener('click',onC); d.addEventListener('click',onD);
         }
 
-        /* ========== PAYMENTS (с уведомлениями) ========== */
+        /* ========== PAYMENTS ========== */
         function renderPaymentsPage(){
             const content=$('#content-payments'); if(!content)return;
             const now=new Date(), tStr=todayStr();
-            const sorted=[...state.payments].sort((a,b)=>new Date(a.date)-new Date(b.date));
+            const todayLocal = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            const sorted=[...state.payments].sort((a,b)=>parseLocalDate(a.date)-parseLocalDate(b.date));
             const upcoming=sorted.filter(p=>p.date>=tStr);
             const upTotal=upcoming.reduce((s,p)=>s+p.amount,0);
             let html=`<div class="stack"><div class="card summary-card animate-in">
@@ -784,46 +845,104 @@
             else{
                 html+=`<div class="section-label">Все платежи</div>`;
                 sorted.forEach(p=>{
-                    const pDate=new Date(p.date); const diff=Math.ceil((pDate-new Date(now.getFullYear(),now.getMonth(),now.getDate()))/864e5);
+                    const pDate = parseLocalDate(p.date);
+                    const diff = Math.round((pDate - todayLocal) / 864e5);
                     let sc='upcoming', stxt=`Через ${diff} дн.`;
-                    if(diff<0){ sc='overdue'; stxt='Просрочено'; } else if(diff===0){ sc='today'; stxt='Сегодня'; } else if(diff===1){ sc='tomorrow'; stxt='Завтра'; }
-                    html+=`<div class="payment-item animate-in" data-payment-id="${p.id}"><div style="flex:1;min-width:0;"><div style="font-weight:700;font-size:14.5px;">${escHtml(p.name)}</div><div style="font-size:12px;color:var(--text-3);margin-top:2px;">${formatDate(p.date)}</div></div><span class="payment-status ${sc}">${stxt}</span><span style="font-weight:800;font-size:15px;white-space:nowrap;">${fmt(p.amount)}</span></div>`;
+                    if(diff<0){ sc='overdue'; stxt='Просрочено'; }
+                    else if(diff===0){ sc='today'; stxt='Сегодня'; }
+                    else if(diff===1){ sc='tomorrow'; stxt='Завтра'; }
+                    const badge = p.noAnalytics ? '<span class="pay-nobadge">вне аналитики</span>' : '';
+                    html+=`<div class="payment-item animate-in" data-payment-id="${p.id}">
+                        <div style="flex:1;min-width:0;">
+                            <div style="font-weight:700;font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(p.name)}</div>
+                            <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-3);margin-top:3px;flex-wrap:wrap;">
+                                <span>${formatDate(p.date)}</span>${badge}
+                            </div>
+                        </div>
+                        <span class="payment-status ${sc}">${stxt}</span>
+                        <span style="font-weight:800;font-size:15px;white-space:nowrap;">${fmt(p.amount)}</span>
+                    </div>`;
                 });
             }
             html+=`</div>`;
             content.innerHTML=html;
             $$('.payment-item',content).forEach(item=>item.addEventListener('click',()=>openEditPaymentModal(item.dataset.paymentId)));
-            // после рендера проверяем уведомления
             scheduleNotificationCheck();
         }
 
         function openAddPaymentModal(){
             let html=`<div class="modal-handle"></div><div class="modal-title">Новый платёж</div>
-            <input class="modal-input" id="pay-name" placeholder="Название" type="text">
-            <input class="modal-input" id="pay-amount" placeholder="Сумма" type="number" step="any" inputmode="decimal">
+            <div class="field-label">Название</div>
+            <input class="modal-input" id="pay-name" placeholder="Например: Интернет" type="text">
+            <div class="field-label">Сумма</div>
+            <input class="modal-input" id="pay-amount" placeholder="0" type="number" step="any" inputmode="decimal">
+            <div class="field-label">Дата платежа</div>
             <input class="modal-input" id="pay-date" type="date" value="${todayStr()}">
+            <div class="checkbox-row" id="pay-no-analytics-row">
+                <div class="checkbox-box">✓</div>
+                <div style="flex:1;">
+                    <div class="checkbox-label">Не учитывать в аналитике</div>
+                    <div class="checkbox-hint">Платёж не попадёт в статистику доходов и расходов</div>
+                </div>
+            </div>
             <button class="modal-btn primary" id="btn-save-pay">Добавить</button>
             <button class="modal-btn secondary" id="btn-cancel-pay">Отмена</button>`;
             openModal(html);
-            $('#btn-save-pay').addEventListener('click',()=>{ const name=$('#pay-name').value.trim(); const amount=parseFloat($('#pay-amount').value); const date=$('#pay-date').value; if(!name||!amount||amount<=0||!date){ return; } state.payments.push({id:uid(),name,amount:Math.abs(amount),date,createdAt:new Date().toISOString()}); persistAll(); closeModal(); renderPaymentsPage(); sfxAdd(); scheduleNotificationCheck(); });
+            let noAnalytics = false;
+            const naRow = $('#pay-no-analytics-row');
+            naRow.addEventListener('click', () => {
+                noAnalytics = !noAnalytics;
+                naRow.classList.toggle('checked', noAnalytics);
+            });
+            $('#btn-save-pay').addEventListener('click',()=>{
+                const name=$('#pay-name').value.trim();
+                const amount=parseFloat($('#pay-amount').value);
+                const date=$('#pay-date').value;
+                if(!name||!amount||amount<=0||!date){ return; }
+                state.payments.push({id:uid(),name,amount:Math.abs(amount),date,noAnalytics,createdAt:new Date().toISOString()});
+                persistAll(); closeModal(); renderPaymentsPage(); sfxAdd(); scheduleNotificationCheck();
+            });
             $('#btn-cancel-pay').addEventListener('click',closeModal);
         }
+
         function openEditPaymentModal(pid){
             const p=state.payments.find(x=>x.id===pid); if(!p)return;
+            let noAnalytics = !!p.noAnalytics;
             let html=`<div class="modal-handle"></div><div class="modal-title">Редактировать платёж</div>
+            <div class="field-label">Название</div>
             <input class="modal-input" id="e-pay-name" type="text" value="${escHtml(p.name)}">
+            <div class="field-label">Сумма</div>
             <input class="modal-input" id="e-pay-amount" type="number" step="any" inputmode="decimal" value="${p.amount}">
+            <div class="field-label">Дата платежа</div>
             <input class="modal-input" id="e-pay-date" type="date" value="${p.date}">
+            <div class="checkbox-row${noAnalytics?' checked':''}" id="e-pay-no-analytics-row">
+                <div class="checkbox-box">✓</div>
+                <div style="flex:1;">
+                    <div class="checkbox-label">Не учитывать в аналитике</div>
+                    <div class="checkbox-hint">Платёж не попадёт в статистику доходов и расходов</div>
+                </div>
+            </div>
             <button class="modal-btn primary" id="btn-update-pay">Сохранить</button>
             <button class="modal-btn danger" id="btn-delete-pay">Удалить</button>
             <button class="modal-btn secondary" id="btn-cancel-edit-pay">Отмена</button>`;
             openModal(html);
-            $('#btn-update-pay').addEventListener('click',()=>{ p.name=$('#e-pay-name').value.trim()||p.name; p.amount=Math.abs(parseFloat($('#e-pay-amount').value)||p.amount); p.date=$('#e-pay-date').value||p.date; persistAll(); closeModal(); renderPaymentsPage(); sfxAdd(); scheduleNotificationCheck(); });
+            const naRow = $('#e-pay-no-analytics-row');
+            naRow.addEventListener('click', () => {
+                noAnalytics = !noAnalytics;
+                naRow.classList.toggle('checked', noAnalytics);
+            });
+            $('#btn-update-pay').addEventListener('click',()=>{
+                p.name=$('#e-pay-name').value.trim()||p.name;
+                p.amount=Math.abs(parseFloat($('#e-pay-amount').value)||p.amount);
+                p.date=$('#e-pay-date').value||p.date;
+                p.noAnalytics=noAnalytics;
+                persistAll(); closeModal(); renderPaymentsPage(); sfxAdd(); scheduleNotificationCheck();
+            });
             $('#btn-delete-pay').addEventListener('click',()=>{ closeModal(); showConfirm('Удалить платёж?',()=>{ state.payments=state.payments.filter(x=>x.id!==pid); persistAll(); renderPaymentsPage(); sfxDelete(); scheduleNotificationCheck(); }); });
             $('#btn-cancel-edit-pay').addEventListener('click',closeModal);
         }
 
-        /* ========== ANALYTICS (оставлен без изменений для краткости) ========== */
+        /* ========== ANALYTICS ========== */
         function getDateRange(period){
             const now=new Date(); let start,end=new Date();
             if(period==='today'){ start=new Date(now.getFullYear(),now.getMonth(),now.getDate()); }
@@ -852,9 +971,7 @@
         function renderAnalyticsPage(){
             const content=$('#content-analytics'); if(!content)return;
             const a=state.analytics;
-            const periodLabel=(PERIODS.find(p=>p.id===a.period)||{}).label||'';
             const walletLabel = a.walletId==='all' ? 'Все' : walletName(a.walletId);
-            const catLabel = a.categories.length===0 ? 'Все' : (a.categories.length+' выбр.');
             let html=`<div class="stack">
                 <div class="segmented animate-in">
                     <button id="an-expense" class="${a.type==='expense'?'on-expense':''}">Расходы</button>
@@ -1162,7 +1279,7 @@
                 navigator.serviceWorker.register('./sw.js',{scope:'./'}).catch(()=>{});
             });
         }
-        console.log('[v0] Финансы — добавлены уведомления о платежах через ntfy');
+        console.log('[v1] Финансы — доработаны платежи (дата + вне аналитики) и главный экран');
     })();
     </script>
 </body>
